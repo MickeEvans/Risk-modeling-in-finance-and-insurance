@@ -18,17 +18,17 @@ returns = returns.dropna()
 y2 = returns ** 2
 
 # Moving Average (MA) Volatility Forecast
-W = 60
-ma_var = y2.rolling(window=W).mean()
+W_ma = 60
+ma_var = y2.rolling(window=W_ma).mean()
 ma_vol = np.sqrt(ma_var)
 ma_vol = ma_vol.dropna()
 ma_vol_forecast = ma_vol.loc['2022-01-01':'2025-12-31']
 
 # Exponentially Weighted Moving Average (EWMA) Volatility Forecast
 lmbda = 0.94  # Decay factor for EWMA
-W = 60 # Window size for EWMA
+W_ewma = 60 # Window size for EWMA
 
-powers = np.arange(W, 0, -1)
+powers = np.arange(W_ewma, 0, -1)
 multiplier = (1 - lmbda) / (lmbda * (1 - lmbda**W)) # Calculate the multiplier expression
 weights = multiplier * (lmbda ** powers) # Calculate the weights for the EWMA
 
@@ -37,7 +37,7 @@ def calc_ewma(y2):
     return np.sum(weights * y2)
 
 # Calculate the EWMA volatility using the rolling apply method
-ewma_var = y2.rolling(window=W).apply(calc_ewma, raw=True)
+ewma_var = y2.rolling(window=W_ewma).apply(calc_ewma, raw=True)
 ewma_vol = np.sqrt(ewma_var)
 ewma_vol = ewma_vol.dropna()
 ewma_vol_forecast = ewma_vol.loc['2022-01-01':'2025-12-31']
