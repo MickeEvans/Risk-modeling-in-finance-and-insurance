@@ -1,0 +1,82 @@
+  omega_bounds=(0.005, 0.10),
+        alpha_bounds=(0.02, 0.20),
+        beta_bounds=(0.70, 0.92),
+        n=15,
+
+
+        PS C:\Users\msede\OneDrive - Umeå universitet\År 5\Risk modeling in finance and insurance\Laboration\L1\Code> python -m Q2.garch11
+round 0: omega=0.066071 alpha=0.148571 beta=0.794286 alpha+beta=0.942857 loglik=-1202.776262
+round 1: omega=0.065102 alpha=0.150408 beta=0.794286 alpha+beta=0.944694 loglik=-1202.741673
+round 2: omega=0.064687 alpha=0.150933 beta=0.794927 alpha+beta=0.945860 loglik=-1202.734744
+round 3: omega=0.064726 alpha=0.150783 beta=0.794973 alpha+beta=0.945756 loglik=-1202.734659
+round 4: omega=0.064729 alpha=0.150772 beta=0.794986 alpha+beta=0.945758 loglik=-1202.734657
+round 5: omega=0.064727 alpha=0.150771 beta=0.794991 alpha+beta=0.945761 loglik=-1202.734657
+best omega: 0.0647269632551063
+best alpha: 0.15077076728233985
+best beta: 0.7949906926535713
+best loglik: -1202.7346571852931
+omega implied by unconditional variance: 0.07522646048027364
+beats hand-found -1211.23: True
+
+
+
+  best_omega, best_alpha, best_beta, best_loglik = garch11_refine(
+        returns,
+        omega_bounds=(0.001, 0.20),
+        alpha_bounds=(0.0, 0.30),
+        beta_bounds=(0.60, 0.999),
+        n=15,
+    )
+
+
+    PS C:\Users\msede\OneDrive - Umeå universitet\År 5\Risk modeling in finance and insurance\Laboration\L1\Code> python -m Q2.garch11
+round 0: omega=0.057857 alpha=0.150000 beta=0.799500 alpha+beta=0.949500 loglik=-1203.276370
+round 1: omega=0.065980 alpha=0.153061 beta=0.791357 alpha+beta=0.944418 loglik=-1202.751271
+round 2: omega=0.064819 alpha=0.150875 beta=0.794847 alpha+beta=0.945722 loglik=-1202.734715
+round 3: omega=0.064736 alpha=0.150750 beta=0.795013 alpha+beta=0.945763 loglik=-1202.734665
+round 4: omega=0.064730 alpha=0.150768 beta=0.794989 alpha+beta=0.945757 loglik=-1202.734657
+round 5: omega=0.064727 alpha=0.150770 beta=0.794991 alpha+beta=0.945761 loglik=-1202.734657
+round 6: omega=0.064727 alpha=0.150771 beta=0.794991 alpha+beta=0.945761 loglik=-1202.734657
+best omega: 0.06472705675356358
+best alpha: 0.15077063371311517
+best beta: 0.7949905906552542
+best loglik: -1202.734657185188
+omega implied by unconditional variance: 0.07522678720205385
+beats hand-found -1211.23: True
+standardized residual variance: 0.9945437297206156
+
+
+
+    best_omega, best_alpha, best_beta, best_loglik = garch11_refine(
+        returns,
+        omega_bounds=(0.001, 0.20),
+        alpha_bounds=(0.01, 0.08),
+        beta_bounds=(0.90, 0.99),
+        n=15,
+    )
+
+    PS C:\Users\msede\OneDrive - Umeå universitet\År 5\Risk modeling in finance and insurance\Laboration\L1\Code> python -m Q2.garch11
+WARNING: beta hit grid boundary at 0.9
+round 0: omega=0.029429 alpha=0.075000 beta=0.900000 alpha+beta=0.975000 loglik=-1221.553900
+WARNING: alpha hit grid boundary at 0.08
+WARNING: beta hit grid boundary at 0.8935714285714286
+round 1: omega=0.029429 alpha=0.080000 beta=0.893571 alpha+beta=0.973571 loglik=-1218.155462
+WARNING: alpha hit grid boundary at 0.08071428571428571
+WARNING: beta hit grid boundary at 0.8926530612244898
+round 2: omega=0.029138 alpha=0.080714 beta=0.892653 alpha+beta=0.973367 loglik=-1217.759821
+WARNING: alpha hit grid boundary at 0.08081632653061224
+WARNING: beta hit grid boundary at 0.8925218658892129
+round 3: omega=0.029221 alpha=0.080816 beta=0.892522 alpha+beta=0.973338 loglik=-1217.707569
+WARNING: alpha hit grid boundary at 0.08083090379008746
+WARNING: beta hit grid boundary at 0.8925031236984591
+round 4: omega=0.029227 alpha=0.080831 beta=0.892503 alpha+beta=0.973334 loglik=-1217.700140
+WARNING: alpha hit grid boundary at 0.08083298625572678
+WARNING: beta hit grid boundary at 0.8925004462426371
+round 5: omega=0.029226 alpha=0.080833 beta=0.892500 alpha+beta=0.973333 loglik=-1217.699079
+best omega: 0.02922644051373153
+best alpha: 0.08083298625572678
+best beta: 0.8925004462426371
+best loglik: -1217.6990791170851
+omega implied by unconditional variance: 0.036985351816918866
+beats hand-found -1211.23: False
+standardized residual variance: 0.9989004098435607
