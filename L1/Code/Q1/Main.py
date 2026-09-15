@@ -29,7 +29,7 @@ lmbda = 0.94  # Decay factor for EWMA
 W_ewma = 60 # Window size for EWMA
 
 powers = np.arange(W_ewma, 0, -1)
-multiplier = (1 - lmbda) / (lmbda * (1 - lmbda**W)) # Calculate the multiplier expression
+multiplier = (1 - lmbda) / (lmbda * (1 - lmbda**W_ewma)) # Calculate the multiplier expression
 weights = multiplier * (lmbda ** powers) # Calculate the weights for the EWMA
 
 # Define a function to calculate the EWMA variance
