@@ -8,12 +8,12 @@ Usage:    python get_nasdaq_data.py
 import numpy as np 
 import yfinance as yf
 
-# --- Settings ---------------------------------------------------------
+#  Settings 
 TICKER = "^IXIC"          # NASDAQ index ticker on Yahoo Finance
 START_DATE = "2012-01-01"
 END_DATE = "2021-12-31"   # note: yfinance's 'end' is exclusive, handled below
 OUTPUT_FILE = "Q2/nasdaq_2012_2021.csv"
-# -----------------------------------------------------------------------
+# 
 
 def main():
     # yfinance's `end` param is exclusive, so add one day to include END_DATE
