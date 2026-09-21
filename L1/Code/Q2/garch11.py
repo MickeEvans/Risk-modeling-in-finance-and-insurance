@@ -98,14 +98,34 @@ def garch11_refine(returns, omega_bounds, alpha_bounds, beta_bounds, n=15, tol=1
     return best_omega, best_alpha, best_beta, best_loglik
 
 
+def rolling_ma_ewma_vol(prices, window=60, lmbda=0.94):
+    returns = np.log(prices / prices.shift(1)).dropna()
+    y2 = returns ** 2
+
+    ma_vol = np.sqrt(y2.rolling(window=window).mean()).dropna()
+
+    powers = np.arange(window, 0, -1)
+    multiplier = (1 - lmbda) / (lmbda * (1 - lmbda ** window))
+    weights = multiplier * (lmbda ** powers)
+    ewma_var = y2.rolling(window=window).apply(lambda w: np.sum(weights * w), raw=True)
+    ewma_vol = np.sqrt(ewma_var).dropna()
+
+    return ma_vol, ewma_vol
+
+
 if __name__ == "__main__":
 
-    csv_path = pathlib.Path(__file__).parent / "nasdaq_2012_2021.csv"
-    data = pd.read_csv(csv_path, index_col="Date", parse_dates=True)
-    returns = (data["Log_returns"].dropna() * 100).values
+    csv_path = pathlib.Path(__file__).parent / "sp500_2012_2021.csv"
+    data = pd.read_csv(
+        csv_path, skiprows=3, names=["Date", "Close", "High", "Low", "Open", "Volume"]
+    )
+    data["Date"] = pd.to_datetime(data["Date"])
+    data.set_index("Date", inplace=True)
+    log_returns = np.log(data["Close"] / data["Close"].shift(1)).dropna()
+    returns = (log_returns * 100).values
     sample_var = returns.var()
 
-    refit_answer = input("Refit the GARCH(1,1) model on Nasdaq data? [y/n]: ").strip().lower()
+    refit_answer = input("Refit the GARCH(1,1) model on S&P 500 data? [y/n]: ").strip().lower()
     refit = refit_answer.startswith("y") or not PARAMS_FILE.exists()
 
     if refit:
@@ -128,50 +148,48 @@ if __name__ == "__main__":
         best_alpha = params["alpha"]
         best_beta = params["beta"]
         best_loglik = params["loglik"]
-        print("Loaded cached parameters from", PARAMS_FILE.name)
 
-    print("best omega:", best_omega)
-    print("best alpha:", best_alpha)
-    print("best beta:", best_beta)
-    print("best loglik:", best_loglik)
+    print(
+        f"best: omega={best_omega:.6f} alpha={best_alpha:.6f} "
+        f"beta={best_beta:.6f} loglik={best_loglik:.6f}"
+    )
 
-    omega_from_unconditional_var = sample_var * (1 - best_alpha - best_beta)
-    print("omega implied by unconditional variance:", omega_from_unconditional_var)
-
-    sigma2_fitted = garch11_variance(returns, best_omega, best_alpha, best_beta, sample_var)
-    z = returns / np.sqrt(sigma2_fitted)
-    print("standardized residual variance:", z.var())
-
-    #  Apply the Nasdaq-fitted GARCH(1,1) to S&P 500 returns 
+    #  Apply the fitted GARCH(1,1) out-of-sample to S&P 500 2022-2025 returns
     sp500_csv_path = pathlib.Path(__file__).parent / "sp500_2022_2025.csv"
-    sp500_data = pd.read_csv(sp500_csv_path, index_col="Date", parse_dates=True)
-    sp500_returns = (sp500_data["Log_returns"].dropna() * 100).values
-    sp500_dates = sp500_data["Log_returns"].dropna().index
+    sp500_data = pd.read_csv(
+        sp500_csv_path, skiprows=3, names=["Date", "Close", "High", "Low", "Open", "Volume"]
+    )
+    sp500_data["Date"] = pd.to_datetime(sp500_data["Date"])
+    sp500_data.set_index("Date", inplace=True)
+    sp500_log_returns = np.log(sp500_data["Close"] / sp500_data["Close"].shift(1)).dropna()
+    sp500_returns = (sp500_log_returns * 100).values
+    sp500_dates = sp500_log_returns.index
 
     sigma2_init_sp500 = sp500_returns.var()
-    print("sp500 sigma2_init (sample variance):", sigma2_init_sp500)
-
     sp500_sigma2 = garch11_variance(
         sp500_returns, best_omega, best_alpha, best_beta, sigma2_init_sp500
     )
     sp500_vol = np.sqrt(sp500_sigma2)
 
-    print("sp500 any NaN:", np.isnan(sp500_sigma2).any())
-    print("sp500 all positive:", (sp500_sigma2 > 0).all())
-    print("sp500 vol range (%):", sp500_vol.min(), "to", sp500_vol.max())
+    #  Compare against the MA / EWMA volatility forecasts from Q1
+    q1_csv_path = pathlib.Path(__file__).parent.parent / "Q1" / "spx_data.csv"
+    q1_data = pd.read_csv(
+        q1_csv_path, skiprows=3, names=["Date", "Close", "High", "Low", "Open", "Volume"]
+    )
+    q1_data["Date"] = pd.to_datetime(q1_data["Date"])
+    q1_data.set_index("Date", inplace=True)
 
-    hand_calc_sigma2_1 = (
-        best_omega + best_alpha * sp500_returns[0] ** 2 + best_beta * sigma2_init_sp500
-    )
-    print(
-        "sp500 sigma2[1] matches hand calc:",
-        np.isclose(sp500_sigma2[1], hand_calc_sigma2_1),
-    )
+    ma_vol, ewma_vol = rolling_ma_ewma_vol(q1_data["Close"])
+    ma_vol_pct = (ma_vol * 100).loc["2022-01-01":"2025-12-31"]
+    ewma_vol_pct = (ewma_vol * 100).loc["2022-01-01":"2025-12-31"]
 
     plt.figure(figsize=(10, 4))
-    plt.plot(sp500_dates, sp500_vol)
-    plt.title("S&P 500 conditional volatility (Nasdaq-fitted GARCH(1,1))")
+    plt.plot(sp500_dates, sp500_vol, label="GARCH(1,1)", color="tab:blue")
+    plt.plot(ma_vol_pct.index, ma_vol_pct, label="60-day MA", color="tab:orange")
+    plt.plot(ewma_vol_pct.index, ewma_vol_pct, label="EWMA (λ=0.94)", color="tab:green")
+    plt.title("S&P 500 daily volatility: GARCH(1,1) vs MA vs EWMA")
     plt.xlabel("Date")
     plt.ylabel("Volatility (%)")
+    plt.legend()
     plt.tight_layout()
     plt.show()
