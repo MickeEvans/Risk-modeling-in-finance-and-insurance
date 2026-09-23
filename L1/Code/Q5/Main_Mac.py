@@ -84,6 +84,24 @@ print(f"1000-Day Window: {violations_1000} violations, VR: {ratio_1000:.4f}")
 print(f"GARCH Normal: {violations_GARCH_normal} violations, VR: {ratio_GARCH_normal:.4f}")
 print(f"GARCH FHS: {violations_GARCH_fhs} violations, VRo: {ratio_GARCH_fhs:.4f}")
 
+#Hypothesis Testing (Z-Test)
+variance = total_days * 0.02 * 0.98
+std_dev = np.sqrt(variance)
+z_constant = 1.96
+
+models = {
+    "500-Day Window": violations_500,
+    "1000-Day Window": violations_1000,
+    "GARCH Normal": violations_GARCH_normal,
+    "GARCH FHS": violations_GARCH_fhs
+}
+
+print(f"Hypothesis Test Results (5% Level): ")
+for name, v in models.items():
+    z_stat = (v - expected_violations) / std_dev
+    status = "REJECTED" if abs(z_stat) > z_constant else "ACCEPTED"
+    print(f"{name}: Z-Score = {z_stat:.2f} -> {status}")
+
 # --- Create Figure (Using your Q4 formatting) ---
 fig, ax = plt.subplots(figsize=(12, 6))
 
