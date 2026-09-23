@@ -1,3 +1,5 @@
+import json
+import pathlib
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,13 +24,15 @@ returns = returns.dropna()
 var_500 = -returns.rolling(window=500).quantile(0.02)
 var_1000 = -returns.rolling(window=1000).quantile(0.02)
 
-# --- Q5: GARCH Setup ---
 # Q2 parameters were in percentages, so we scale returns by 100 for the math
 returns_pct = returns * 100
-omega = 0.06472705675356358
-alpha = 0.15077063371311517
-beta = 0.7949905906552542
-sigma2_init = 1.2543909562292734
+
+params_path = pathlib.Path(__file__).parent.parent / "Q2" / "garch11_params.json"
+garch_params = json.loads(params_path.read_text())
+omega = garch_params["omega"]
+alpha = garch_params["alpha"]
+beta = garch_params["beta"]
+sigma2_init = returns_pct.var()
 
 sigma2 = np.zeros(len(returns_pct))
 sigma2[0] = sigma2_init

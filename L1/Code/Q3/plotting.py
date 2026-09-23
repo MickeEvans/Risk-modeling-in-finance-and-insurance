@@ -12,7 +12,7 @@ sys.path.insert(0, str(Q2_DIR))
 from garch11 import garch11_variance  # noqa: E402
 
 PARAMS_FILE = Q2_DIR / "garch11_params.json"
-CSV_FILE = Q2_DIR / "nasdaq_2012_2021.csv"
+CSV_FILE = Q2_DIR / "sp500_2012_2021.csv"
 MAX_LAG = 200
 
 
