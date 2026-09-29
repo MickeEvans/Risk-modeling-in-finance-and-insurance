@@ -129,7 +129,7 @@ if __name__ == "__main__":
     ])
     best_df = df_grid[np.argmin(sse)]
     print(f"Best-fit Student-t df for left tail (bottom 10%): {best_df} (SSE={sse.min():.4f})")
-
+x
     best_t_q = t_quantiles_std(p, best_df)
 
     fig4, axes4 = plt.subplots(1, 2, figsize=(12, 5))
