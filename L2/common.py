@@ -1,9 +1,11 @@
-"""Shared data loading and plotting for the L2 questions (run scripts from the Laboration root)."""
+"""Shared data loading and plotting for the L2 questions."""
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-DATA_PATH = "L2/market_data.csv"
+DATA_PATH = Path(__file__).resolve().parent / "market_data.csv"
 START_DATE = "1996-01-01"
 END_DATE = "2025-12-31"
 
@@ -21,7 +23,7 @@ GRID_COLOR = "#e1e0d9"
 AXIS_COLOR = "#c3c2b7"
 
 
-def load_data(path: str = DATA_PATH) -> pd.DataFrame:
+def load_data(path: str | Path = DATA_PATH) -> pd.DataFrame:
     df = pd.read_csv(path, sep=";", parse_dates=["Date"])
     df = df.set_index("Date").sort_index()
     return df.loc[START_DATE:END_DATE, ASSET_COLUMNS]

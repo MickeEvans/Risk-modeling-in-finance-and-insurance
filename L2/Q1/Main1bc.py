@@ -9,7 +9,7 @@ from matplotlib.colors import LinearSegmentedColormap
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import ASSET_COLUMNS, PERIODS_PER_YEAR, STOCK_COLUMNS, load_data  # noqa: E402
 
-CORR_MATRIX_PATH = "L2/Q1/CorrelationMatrix.png"
+CORR_MATRIX_PATH = Path(__file__).resolve().parent / "CorrelationMatrix.png"
 
 # Sequential blue ramp, light -> dark (no negative correlations in this dataset, so 0-1 magnitude).
 BLUE_SEQUENTIAL = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]

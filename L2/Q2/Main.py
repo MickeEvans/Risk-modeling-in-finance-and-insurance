@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import ASSET_COLUMNS, PERCENTILES, RATE_COLUMNS, load_data, log_returns, plot_fan  # noqa: E402
 from var1 import fit_var1, returns_to_levels, simulate_var1  # noqa: E402
 
-OUT_DIR = Path("L2/Q2")
+OUT_DIR = Path(__file__).resolve().parent
 SEED = 20260929
 N_SCENARIOS = 5000
 N_STEPS = 480
