@@ -1,86 +1,88 @@
-import pandas as pd
+import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Load the data from the parent directory
-# Ensure you specify the semicolon separator
-df = pd.read_csv('../market_data.csv', sep=';')
-
-# 2. Convert 'Date' to datetime and set it as index 
+# 1. Data preparation
+script_dir = os.path.dirname(os.path.abspath(__file__))
+df = pd.read_csv(os.path.join(script_dir, '..', 'market_data.csv'), sep=';')
 df['Date'] = pd.to_datetime(df['Date'])
 df.set_index('Date', inplace=True)
 
-# 3. Calculate weekly logarithmic returns for all assets
-# Formula: ln(P_t / P_{t-1})
+# Calculate log returns for ALL assets
 log_returns = np.log(df / df.shift(1)).dropna()
 
-print(log_returns.head())
+asset_names = df.columns.tolist()
 
 
-# Simulation setup
-
+## 2. Historical simulation
 n_scenarios = 5000
 n_steps = 480
-last_prices = df.iloc[-1].values
+np.random.seed(42) 
 
 # Random sample of historical log returns
-historical_indices = np.random.choice(
-    a=len(log_returns), 
-    size=(n_scenarios, n_steps), 
-    replace=True
-)
-
+historical_indices = np.random.randint(0, len(log_returns), size=(n_scenarios, n_steps))
 simulated_log_returns = log_returns.values[historical_indices]
 
+# Simulate paths for all assets using exponentiated log-returns
+last_prices = df.iloc[-1].values
 cumulative_log_returns = np.cumsum(simulated_log_returns, axis=1)
 simulated_paths = last_prices * np.exp(cumulative_log_returns)
 
-# Calculate percentiles
+# 3. Percentiles & tables
 percentiles = [5, 10, 25, 50, 75, 90, 95]
 simulated_percentiles = np.percentile(simulated_paths, percentiles, axis=0)
 
-# Get column (asset) names
-asset_names = df.columns.tolist() 
-
-t240_data = simulated_percentiles[:, 239, :].T  # Transpose to get assets as rows
-t480_data = simulated_percentiles[:, 479, :].T
-
-# Convert to Pandas DataFrames for nice formatting
+# Generate Week 240 Table
+t240_data = simulated_percentiles[:, 239, :].T
 table_240 = pd.DataFrame(t240_data, index=asset_names, columns=[f"{p}%" for p in percentiles])
+table_240.round(2).to_latex(os.path.join(script_dir, 'table_240.tex'))
+
+# Generate Week 480 Table
+t480_data = simulated_percentiles[:, 479, :].T
 table_480 = pd.DataFrame(t480_data, index=asset_names, columns=[f"{p}%" for p in percentiles])
+table_480.round(2).to_latex(os.path.join(script_dir, 'table_480.tex'))
 
-print("--- Percentiles at Time Step 240 ---")
-print(table_240)
+# 4. Plotting
+try:
+    var1_percentiles = np.load(os.path.join(script_dir, '..', 'Q2', 'percentiles_var1.npy'))
+    has_var1 = True
+except FileNotFoundError:
+    print("\nNote: Q2/percentiles_var1.npy not found.")
+    has_var1 = False
 
-print("\n--- Percentiles at Time Step 480 ---")
-print(table_480)
-
-# Find the column indices for the four required assets
 assets_to_plot = ['CAT', 'WMT', 'Y05', 'Y30']
 asset_indices = [asset_names.index(asset) for asset in assets_to_plot]
+time_steps = np.arange(1, n_steps + 1)
 
-time_steps = np.arange(1, 481) # X-axis from 1 to 480
-
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-axes = axes.flatten()
-
-for i, (asset_name, asset_idx) in enumerate(zip(assets_to_plot, asset_indices)):
-    ax = axes[i]
+for asset_name, asset_idx in zip(assets_to_plot, asset_indices):
+    fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Plot each percentile as a dashed line
     for p_idx, p_val in enumerate(percentiles):
-        # Extract the line for this specific percentile and asset over all 480 steps
-        line_data = simulated_percentiles[p_idx, :, asset_idx]
+        # Plot VAR(1) as solid black lines
+        if has_var1:
+            var1_line = var1_percentiles[p_idx, 1:, asset_idx]
+            ax.plot(time_steps, var1_line, color='black', linestyle='-', alpha=0.6, 
+                    label='VAR(1)' if p_val == 50 else None)
         
-        # Plot with dashed lines ('--') for Historical Simulation
-        ax.plot(time_steps, line_data, linestyle='--', label=f'{p_val}th pctl')
+        # Plot Historical Simulation as dashed blue lines
+        hs_line = simulated_percentiles[p_idx, :, asset_idx]
+        ax.plot(time_steps, hs_line, color='blue', linestyle='--', alpha=0.8,
+                label='Historical Simulation' if p_val == 50 else None)
         
-    ax.set_title(f'Historical Simulation Percentiles: {asset_name}')
+    ax.set_title(f'Historical Simulation vs VAR(1): {asset_name}')
     ax.set_xlabel('Time Step (Weeks)')
-    ax.set_ylabel('Price / Rate')
-    # Place legend outside the plot to avoid covering the lines
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left') 
+    ax.set_ylabel('Price / Yield')
+    
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), loc='upper left')
+    
     ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(script_dir, f'Q3_plot_{asset_name}.png'), dpi=150)
+    plt.close()
 
-plt.tight_layout()
-plt.show()
+# Export to LaTeX
+table_240.round(2).to_latex(os.path.join(script_dir, 'table_240.tex'))
+table_480.round(2).to_latex(os.path.join(script_dir, 'table_480.tex'))
