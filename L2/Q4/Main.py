@@ -198,29 +198,80 @@ for s in range(n_scenarios):
 print("Simulation complete.")
 
 # ---------------------------------------------------------
-# 6. EXTRACT PERCENTILES & PLOTTING (Deliverable 4b)
+# 6. COMPARATIVE SIMULATIONS & PLOTTING (Deliverable 4b)
 # ---------------------------------------------------------
+print("Running baseline models for comparison...")
+
+# --- A. Historical Simulation (Fast Vectorized) ---
+np.random.seed(42)
+hs_indices = np.random.randint(0, len(log_returns), size=(n_scenarios, n_steps))
+hs_sim_stocks = last_stocks * np.exp(np.cumsum(log_returns.values[hs_indices], axis=1))
+hs_sim_rates = last_rates + np.cumsum(rate_diffs.values[hs_indices], axis=1)
+
+# --- B. VAR(1) Simulation ---
+import sys
+from pathlib import Path
+
+# 1. Point Python to the main L2 folder where common.py and var1.py live
+l2_dir = Path(__file__).resolve().parent.parent
+if str(l2_dir) not in sys.path:
+    sys.path.insert(0, str(l2_dir))
+
+# 2. Import Michael's custom functions
+from common import load_data, log_returns
+from var1 import simulate_var1, returns_to_levels
+
+# 3. Load Michael's calibrated matrices
+var_A = pd.read_csv(l2_dir / 'Q2' / 'var1_A.csv', index_col=0).values.astype(float)
+var_c = pd.read_csv(l2_dir / 'Q2' / 'var1_c.csv', index_col=0).values.astype(float).flatten()
+var_Sigma = pd.read_csv(l2_dir / 'Q2' / 'var1_Sigma.csv', index_col=0).values.astype(float)
+
+# 4. Load the exact starting states his model expects
+m_prices = load_data()
+m_R = log_returns(m_prices).to_numpy()
+m_R_last = m_R[-1]
+m_start_levels = m_prices.iloc[-1].to_numpy()
+
+# 5. Run Michael's simulation engine
+rng = np.random.default_rng(42)
+m_sim_returns = simulate_var1(var_c, var_A, var_Sigma, m_R_last, n_scenarios, n_steps, rng)
+m_levels = returns_to_levels(m_sim_returns, m_start_levels)
+
+# 6. Split his output to feed directly into your plotting loop
+var_sim_stocks = m_levels[:, :, :10] 
+var_sim_rates = m_levels[:, :, 10:]
+
 percentiles = [5, 10, 25, 50, 75, 90, 95]
 
-# Indices for CAT (1) and WMT (8) in the stocks array
-cat_pctls = np.percentile(sim_stocks[:, :, 1], percentiles, axis=0)
-wmt_pctls = np.percentile(sim_stocks[:, :, 8], percentiles, axis=0)
+def get_pctls(sim_data, asset_idx):
+    return np.percentile(sim_data[:, :, asset_idx], percentiles, axis=0)
+def get_pctls(sim_data, asset_idx):
+    return np.percentile(sim_data[:, :, asset_idx], percentiles, axis=0)
 
-# Indices for 5Y (0) and 30Y (4) in the rates array
-y05_pctls = np.percentile(sim_rates[:, :, 0], percentiles, axis=0)
-y30_pctls = np.percentile(sim_rates[:, :, 4], percentiles, axis=0)
+# Indices based on market data: CAT=1, WMT=8, Y05=0, Y30=4
+models = {
+    'VAR(1)': {'stocks': var_sim_stocks, 'rates': var_sim_rates, 'style': '-', 'alpha': 0.6},
+    'HS': {'stocks': hs_sim_stocks, 'rates': hs_sim_rates, 'style': '--', 'alpha': 0.8},
+    'AI ESG': {'stocks': sim_stocks, 'rates': sim_rates, 'style': ':', 'alpha': 1.0}
+}
 
-# Plotting as dotted lines (as requested by the assignment)
-time_steps = np.arange(1, n_steps + 1)
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+assets = [('CAT', 1, 'stocks'), ('WMT', 8, 'stocks'), ('5Y Rate', 0, 'rates'), ('30Y Rate', 4, 'rates')]
 
-assets = [('CAT', cat_pctls), ('WMT', wmt_pctls), ('5Y Rate', y05_pctls), ('30Y Rate', y30_pctls)]
-
-for ax, (name, pctls) in zip(axes.flatten(), assets):
-    for p_idx, p_val in enumerate(percentiles):
-        ax.plot(time_steps, pctls[p_idx], linestyle=':', label=f'{p_val}th pctl')
-    ax.set_title(f'AI ESG (DNS + DCC-GARCH): {name}')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+for ax, (name, idx, asset_type) in zip(axes.flatten(), assets):
+    time_steps = np.arange(1, n_steps + 1)
+    
+    for model_name, data in models.items():
+        pctls = get_pctls(data[asset_type], idx)
+        
+        for p_idx, p_val in enumerate(percentiles):
+            label = f"{model_name}" if p_val == 50 else None
+            ax.plot(time_steps, pctls[p_idx], linestyle=data['style'], alpha=data['alpha'], 
+                    color='black' if model_name == 'VAR(1)' else 'blue' if model_name == 'HS' else 'red', 
+                    label=label)
+            
+    ax.set_title(f'Model Comparison: {name}')
+    ax.legend(loc='upper left')
     ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
