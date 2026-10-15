@@ -65,6 +65,7 @@ def main() -> None:
 
     corr = correlation_matrix(df)
     plot_correlation_matrix(corr, CORR_MATRIX_PATH)
+    plt.show()
 
 
 if __name__ == "__main__":
