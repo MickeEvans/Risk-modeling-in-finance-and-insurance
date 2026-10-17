@@ -183,13 +183,22 @@ if __name__ == "__main__":
     ma_vol_pct = (ma_vol * 100).loc["2022-01-01":"2025-12-31"]
     ewma_vol_pct = (ewma_vol * 100).loc["2022-01-01":"2025-12-31"]
 
-    plt.figure(figsize=(10, 4))
-    plt.plot(sp500_dates, sp500_vol, label="GARCH(1,1)", color="tab:blue")
-    plt.plot(ma_vol_pct.index, ma_vol_pct, label="60-day MA", color="tab:orange")
-    plt.plot(ewma_vol_pct.index, ewma_vol_pct, label="EWMA (λ=0.94)", color="tab:green")
-    plt.title("S&P 500 daily volatility: GARCH(1,1) vs MA vs EWMA")
-    plt.xlabel("Date")
-    plt.ylabel("Volatility (%)")
-    plt.legend()
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    ax1.plot(sp500_dates, sp500_vol, label="GARCH(1,1)", color="tab:blue")
+    ax1.plot(ma_vol_pct.index, ma_vol_pct, label="60-day MA", color="tab:orange")
+    ax1.plot(ewma_vol_pct.index, ewma_vol_pct, label="EWMA (λ=0.94)", color="tab:green")
+    ax1.set_title("S&P 500 daily volatility: GARCH(1,1) vs MA vs EWMA")
+    ax1.set_ylabel("Volatility (%)")
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    ax2.plot(sp500_dates, sp500_log_returns, label="Daily Log-Returns", color="gray", linewidth=0.8)
+    ax2.set_title("S&P 500 Daily Log-Returns")
+    ax2.set_ylabel("Log-Return")
+    ax2.set_xlabel("Date")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
     plt.tight_layout()
     plt.show()
