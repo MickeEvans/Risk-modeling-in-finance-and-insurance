@@ -11,9 +11,7 @@ df.set_index('Date', inplace=True)
 
 # Calculate log returns for ALL assets
 log_returns = np.log(df / df.shift(1)).dropna()
-
 asset_names = df.columns.tolist()
-
 
 ## 2. Historical simulation
 n_scenarios = 5000
