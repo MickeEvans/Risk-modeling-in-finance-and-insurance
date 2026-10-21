@@ -1,5 +1,4 @@
 import sys
-from datetime import date
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -16,18 +15,18 @@ fit_ages = range(20, 91)
 params = fit_makeham(fit_ages, estimate_mu(deaths, pop, fit_ages)["Women"])
 
 # Policy
-x = (date(2025, 12, 31) - date(1965, 12, 24)).days / 365.25  # age at calculation date
+x = 60.0  # age at calculation date 2025-12-31
 u = 65 - x  # years to retirement
 r = 1.02  # guaranteed interest rate
 P = 120_000  # yearly premium
 G0 = 2_000_000
 
 # Month t = end of month t after 2025-12-31, age x + t/12
-t = np.arange(0, int(np.floor(12 * (120 - x))) + 1)
+t = np.arange(0, int(12 * (120 - x)) + 1)
 l = survival(x + t / 12, *params) / survival(x, *params)  # P(alive at t | alive at 0)
 v = r ** (-t / 12)
-premium = np.where((t >= 1) & (t / 12 <= u), P / 12, 0.0)  # t = 1..59
-pays = (t / 12 > u)  # t = 60..719
+premium = np.where((t >= 1) & (t / 12 <= u), P / 12, 0.0)  # t = 1..60
+pays = (t / 12 > u)  # t = 61..720
 
 # 7a: equivalence G(0) = sum v*l*(b/12*pays - premium)
 b = 12 * (G0 + np.sum(v * l * premium)) / np.sum(v * l * pays)
