@@ -33,14 +33,33 @@ simulated_paths = last_prices * np.exp(cumulative_log_returns)
 percentiles = [5, 10, 25, 50, 75, 90, 95]
 simulated_percentiles = np.percentile(simulated_paths, percentiles, axis=0)
 
-# Generate Week 240 Table
-t240_data = simulated_percentiles[:, 239, :].T
-table_240 = pd.DataFrame(t240_data, index=asset_names, columns=[f"{p}%" for p in percentiles])
-table_240.round(2).to_latex(os.path.join(script_dir, 'table_240.tex'))
+# Filter to the 4 required assets and format row names to match Task 2 perfectly
+plot_assets = {
+    "CAT": "Caterpillar (CAT)", 
+    "WMT": "Walmart (WMT)", 
+    "Y05": "5-year rate (Y05) [%]", 
+    "Y30": "30-year rate (Y30) [%]"
+}
 
-# Generate Week 480 Table
-t480_data = simulated_percentiles[:, 479, :].T
-table_480 = pd.DataFrame(t480_data, index=asset_names, columns=[f"{p}%" for p in percentiles])
+def generate_table(week_idx):
+    rows = {}
+    for asset, row_name in plot_assets.items():
+        asset_idx = asset_names.index(asset)
+        values = simulated_percentiles[:, week_idx, asset_idx]
+        
+        # Multiply interest rates by 100 to match the [%] unit in the table
+        if asset in ['Y05', 'Y30']:
+            values = values * 100
+            
+        rows[row_name] = values
+    return pd.DataFrame(rows, index=[f"{p}%" for p in percentiles]).T
+
+# Generate tables (index 239 = week 240, index 479 = week 480)
+table_240 = generate_table(239)
+table_480 = generate_table(479)
+
+# Export directly to LaTeX format
+table_240.round(2).to_latex(os.path.join(script_dir, 'table_240.tex'))
 table_480.round(2).to_latex(os.path.join(script_dir, 'table_480.tex'))
 
 # 4. Plotting
