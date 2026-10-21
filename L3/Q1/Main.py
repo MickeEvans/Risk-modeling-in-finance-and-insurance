@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 months = 600 # 50 years into the future
 
@@ -70,5 +71,7 @@ plt.title('State Model Populations Over 50 Years')
 plt.xlabel('Months (t)')
 plt.ylabel('Population Fraction')
 plt.margins(x=0, y=0)
-plt.savefig('Q1_plot.png')
+current_folder = os.path.dirname(os.path.abspath(__file__))
+save_path = os.path.join(current_folder, 'Q1_plot.png')
+plt.savefig(save_path)
 plt.show()
