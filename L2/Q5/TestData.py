@@ -18,7 +18,3 @@ try:
     print(df_death.head(2))
 except Exception as e:
     print("Error reading files:", e)
-
-
-
-    
