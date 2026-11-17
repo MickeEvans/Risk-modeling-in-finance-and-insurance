@@ -46,6 +46,8 @@ PAYS_PENSION = MONTHS > RET_MONTH                     # months 61..720
 
 SCENARIO_FILE = "ScenarioFile.csv"   # 2000 scenarios, monthly periods 0..120
 HORIZON = 12                         # 1 year
+SIM_MONTHS = 120                     # 10 years, simulated once for Q3 and Q4
+PATHS_FILE = OUT_DIR / "Q3_paths.npz"  # cached paths, delete after changing the model
 CONFIDENCE = 0.95
 STOCK_SHARE = 0.5                    # 50/50 strategies
 M_CPPI = 2                           # CPPI multiplier, floor = BE(t)
@@ -126,21 +128,21 @@ def liabilities():
     G_prev = np.concatenate([[G0], G[:-1]])  # G(t-1): transfers take last month's reserve
 
     cf1 = b / 12 * pop.PO * PAYS_PENSION + pop.to_TR * G_prev - PREMIUM / 12 * pop.PP * PAYS_PREMIUM
-    liab = pd.DataFrame({"PP": pop.PP, "PO": pop.PO, "to_TR": pop.to_TR, "G": G,
+    liab = pd.DataFrame({"PP": pop.PP, "PO": pop.PO, "to_TR": pop.to_TR, "G": G, "EG": G * (pop.PP + pop.PO),
                          "cf1": cf1, "a_due": annuity_due(R_PROG)})
     return liab, b
 
 
 # 3. Asset helpers
 def load_scenarios(file):
-    """Prices (n_scen, T+1, 15: stocks then bonds) and zero rates (n_scen, T+1, 5)."""
+    """Prices (n_scen, T+1, 15: stocks then bonds), zero rates (n_scen, T+1, 5) and the sorted scenario numbers."""
     df = pd.read_csv(DATA_DIR / file)
     df = df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")])  # index column in ScenarioFile
     df = df.sort_values(["Scenario", "Period"])
     n_scen, n_periods = df.Scenario.nunique(), df.Period.nunique()
     prices = df[STOCKS + BONDS].to_numpy().reshape(n_scen, n_periods, -1)
     rates = df[RATES].to_numpy().reshape(n_scen, n_periods, -1)
-    return prices, rates
+    return prices, rates, np.sort(df.Scenario.unique())
 
 
 def discounted_cf(t, cf, zero_rates):
@@ -205,18 +207,23 @@ def cppi(t, A, units, prices_t, BE, D):
     return portfolio(A, S, D, prices_t)
 
 
+STRATEGIES = {"a": ("BH(0/100)", bh_z15), "b": ("BH(50/50)", bh_50_50), "c": ("CM(50/50)", cm_50_50),
+              "d": ("CM(50/50) duration", cm_50_50_duration), "e": ("CPPI(2)", cppi)}
+
+
 # 5. Company model
 def run_scenario(prices, rates, liab, strategy, T=HORIZON):
-    """Run one scenario up to month T. Returns BOF(t) = A(t) - BE(t) for t = 0..T."""
+    """Run one scenario up to month T. Returns A(t), BE(t), E[V](t) = V(t) (PP + PO) and stocks(t) for t = 0..T."""
     PP, PO, to_TR, G = (liab[c].to_numpy() for c in ["PP", "PO", "to_TR", "G"])
     cf1, a_due = liab.cf1.to_numpy(), liab.a_due.to_numpy()
     l = survival(AGE0 + MONTHS / 12)
     b = guaranteed_payout(G0, R_GUAR)
 
-    A, V, BE = np.empty(T + 1), np.empty(T + 1), np.empty(T + 1)
+    A, V, BE, stocks = (np.empty(T + 1) for _ in range(4))
     A[0], V[0], B = V0, V0, b
     BE[0] = best_estimate(0, cf1, rates[0])
     units = strategy(0, A[0], None, prices[0], BE[0], liability_duration(0, cf1, rates[0]))
+    stocks[0] = units[:N_STOCKS] @ prices[0, :N_STOCKS]
     for t in range(1, T + 1):
         # (i) returns on the units carried from last month
         A1 = units @ prices[t]
@@ -237,18 +244,35 @@ def run_scenario(prices, rates, liab, strategy, T=HORIZON):
         # (iv) rebalance with BE(t) and D_L(t)
         BE[t] = best_estimate(t, cf1, rates[t])
         units = strategy(t, A[t], units, prices[t], BE[t], liability_duration(t, cf1, rates[t]))
-    return A - BE  # (v) BOF
+        stocks[t] = units[:N_STOCKS] @ prices[t, :N_STOCKS]
+    return A, BE, V * (PP[:T + 1] + PO[:T + 1]), stocks  # (v) record
+
+
+def run_all(T=SIM_MONTHS):
+    """Paths (n_scen, T+1) of A, BE, BOF, EV and stocks per strategy. Simulated once, then loaded from PATHS_FILE."""
+    keys = ["A", "BE", "EV", "stocks"]
+    if PATHS_FILE.exists():
+        with np.load(PATHS_FILE) as data:
+            paths = {part: {k: data[f"{part}_{k}"] for k in keys} for part in STRATEGIES}
+    else:
+        liab, _ = liabilities()
+        prices, rates, _ = load_scenarios(SCENARIO_FILE)
+        paths = {}
+        for part, (_, strategy) in STRATEGIES.items():
+            runs = [run_scenario(p, r, liab, strategy, T) for p, r in zip(prices, rates)]
+            paths[part] = {k: np.array(x) for k, x in zip(keys, zip(*runs))}
+        np.savez(PATHS_FILE, **{f"{part}_{k}": v for part, d in paths.items() for k, v in d.items()})
+    for d in paths.values():
+        d["BOF"] = d["A"] - d["BE"]
+    return paths
 
 
 def q3():
-    liab, _ = liabilities()
-    prices, rates = load_scenarios(SCENARIO_FILE)
-    strategies = {"a": ("BH(0/100)", bh_z15), "b": ("BH(50/50)", bh_50_50), "c": ("CM(50/50)", cm_50_50),
-                  "d": ("CM(50/50) duration", cm_50_50_duration), "e": ("CPPI(2)", cppi)}
+    paths = run_all()
 
     rows = []
-    for part, (name, strategy) in strategies.items():
-        BOF = np.array([run_scenario(p, r, liab, strategy) for p, r in zip(prices, rates)])
+    for part, (name, _) in STRATEGIES.items():
+        BOF = paths[part]["BOF"]
         bof0, bof1 = BOF[0, 0], BOF[:, HORIZON]  # BOF0 is the same in every scenario
         scr = np.quantile(-(bof1 - bof0), CONFIDENCE)  # 1-year VaR 95% of the loss in BOF
         rows.append({"Strategy": f"{part}) {name}", "BOF0": bof0, "Mean BOF1": bof1.mean(), "SCR": scr})
