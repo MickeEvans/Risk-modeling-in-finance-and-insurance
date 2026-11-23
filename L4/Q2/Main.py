@@ -10,24 +10,31 @@ a) Frequency: number of fires per month
    Assumption: the monthly counts are iid, so the seasonality and the upward trend found in Q1 are ignored.
 
 b) Severity: size of each fire (Total)
-   Method: gamma and log-normal fitted by ML with location 0. Pareto with x_m = 1 MDKK (the reporting
-   threshold), where the ML estimate is alpha = n / sum(log x). Compared by log-likelihood, AIC and
-   the Kolmogorov-Smirnov distance, and by their cdfs plotted over the empirical cdf.
+   Method: gamma, log-normal and Pareto (lecture form, F(x) = 1 - (alpha / (alpha + x))^gamma, x > 0,
+   i.e. scipy's lomax) all fitted by ML with location 0, so all three have support starting at 0.
+   Compared by log-likelihood, AIC and the Kolmogorov-Smirnov distance, and by their cdfs plotted
+   over the empirical cdf.
    Assumption: the losses are iid and independent of the number of fires.
 
-c) Yearly loss S = X_1 + ... + X_N
-   Method: N is the sum of 12 iid monthly counts, so N ~ Poisson(12 lambda) or NB(12 r, p).
+c) Yearly loss S = X_1 + ... + X_N, collective model with the best frequency and severity (lowest AIC)
+   Method: N is the sum of 12 iid monthly counts, so N ~ Poisson(12 lambda) or NB(12 r, p) (same p).
    X is discretised on the grid 0, H, 2H, ..., S_MAX (rounding method) and the pmf of S is computed
-   exactly on the same grid with the Panjer recursion, valid since Poisson and NB are in the (a, b, 0) class.
-   VaR_p(S) = smallest s with F_S(s) >= p. Mean and std are the theoretical values
-       E[S] = E[N] E[X],  Var(S) = E[N] Var(X) + Var(N) E[X]^2.
-   The collective model is the best frequency and the best severity, both by lowest AIC.
-   All six pairs are computed to show how the choice of distributions affects VaR.
+   on the same grid with the Panjer recursion (Lecture 22), valid since Poisson and NB are in the (a, b, 0) class:
+       s_0 = P_N(g_0),  s_k = 1 / (1 - a g_0) sum_{i=1}^{k} (a + b i / k) g_i s_{k-i}.
+   VaR_p(S) = smallest grid value s with F_S(s) >= p.
+   Mean and std in theory (Lecture 21): E[S] = E[N] E[X],  Var(S) = E[N] Var(X) + Var(N) E[X]^2,
+   and also computed from the Panjer pmf on [0, S_MAX].
+   Assumption: if Var(X) is infinite (Pareto, alpha <= 2), the theoretical std of S is infinite.
 
-d) Normal and translated gamma approximations of the collective model in c)
-   Method: match the mean, variance and (translated gamma) skewness of the Panjer pmf of S.
-   Assumption: the fitted Pareto has alpha < 2, so the true Var(S) and skewness are infinite. The moments
-   used are those of the pmf on [0, S_MAX], so they depend on the cut-off S_MAX.
+d) Normal and translated gamma approximations of S (Lecture 21)
+   Method: match the moments of S, computed from the moments of N and X:
+       E[S] = E[N] mu,  Var(S) = E[N] sigma^2 + Var(N) mu^2,
+       kappa3(S) = E[N] kappa3(X) + 3 Var(N) mu sigma^2 + kappa3(N) mu^3,  skew(S) = kappa3(S) / Var(S)^(3/2).
+   Normal: S ~ N(E[S], Var(S)), VaR_p = E[S] + z_p Std(S).
+   Translated gamma: S ~ k + Gamma(alpha, rate beta) with alpha = 4 / skew^2, beta = 2 / (skew Std(S)),
+   k = E[S] - 2 Std(S) / skew.
+   Assumption: the moments of X are exact if finite, otherwise (Pareto, alpha <= 3) they are taken from
+   the discretised X in c), i.e. the same severity that Panjer uses.
 """
 from pathlib import Path
 
@@ -42,7 +49,7 @@ DATA_DIR = OUT_DIR.parent
 H = 1.0          # grid step (MDKK)
 S_MAX = 20_000   # largest yearly loss on the grid (MDKK)
 LEVELS = (0.95, 0.99, 0.995)
-N_PARAMS = {"Poisson": 1, "Neg. binomial": 2, "Gamma": 2, "Log-normal": 2, "Pareto": 1}
+N_PARAMS = {"Poisson": 1, "Neg. binomial": 2, "Gamma": 2, "Log-normal": 2, "Pareto": 2}
 
 
 def load_fire():
@@ -109,11 +116,10 @@ def q2a(mon):
 
 
 def fit_severity(x):
-    """ML fits of the single losses. Pareto: x_m = 1 MDKK (threshold), alpha = n / sum(log x)."""
-    alpha = len(x) / np.log(x).sum()
+    """ML fits of the single losses, all with location 0. Pareto = lomax: c = gamma, scale = alpha (lecture notation)."""
     return {"Gamma": stats.gamma(*stats.gamma.fit(x, floc=0)),
             "Log-normal": stats.lognorm(*stats.lognorm.fit(x, floc=0)),
-            "Pareto": stats.pareto(alpha, scale=1)}
+            "Pareto": stats.lomax(*stats.lomax.fit(x, floc=0))}
 
 
 def q2b(df):
@@ -130,22 +136,16 @@ def q2b(df):
     xs = np.sort(x)
     ecdf = np.arange(1, len(xs) + 1) / len(xs)
     grid = np.logspace(0, np.log10(xs.max()), 500)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
-    ax1.step(xs, ecdf, "k", where="post", label="Empirical")
-    ax2.loglog(xs, 1 - ecdf + 1 / len(xs), "k.", ms=3, label="Empirical")
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.step(xs, ecdf, "k", where="post", label="Empirical")
     for name, dist in fits.items():
-        ax1.plot(grid, dist.cdf(grid), label=name)
-        ax2.loglog(grid, dist.sf(grid), label=name)
-    ax1.set_xscale("log")
-    ax1.set_ylabel("F(x)")
-    ax1.set_title("Fitted cdfs of the losses")
-    ax2.set_ylim(1 / (2 * len(xs)), 1.1)
-    ax2.set_ylabel("1 - F(x)")
-    ax2.set_title("Tail, log-log scale")
-    for ax in (ax1, ax2):
-        ax.set_xlabel("Loss x (MDKK, log scale)")
-        ax.grid(True, which="both", alpha=0.3)
-        ax.legend(frameon=False)
+        ax.plot(grid, dist.cdf(grid), label=name)
+    ax.set_xscale("log")
+    ax.set_xlabel("Loss x (MDKK, log scale)")
+    ax.set_ylabel("F(x)")
+    ax.set_title("Fitted cdfs of the losses")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(frameon=False)
     fig.tight_layout()
     fig.savefig(OUT_DIR / "Q2b_severity.png", dpi=150)
     plt.close(fig)
@@ -194,63 +194,77 @@ def model_moments(freq, sev):
 
 
 def pmf_measures(s, f):
-    """Mean, std, skewness and VaR_p = min{s : F(s) >= p} of a pmf f on the grid s."""
+    """Mean, std and VaR_p = min{s : F(s) >= p} of a pmf f on the grid s."""
     mean = s @ f
-    var = (s - mean) ** 2 @ f
-    skew = (s - mean) ** 3 @ f / var ** 1.5
     cdf = np.cumsum(f)
-    return pd.Series({"Mean": mean, "Std": np.sqrt(var), "Skew": skew,
+    return pd.Series({"Mean": mean, "Std": np.sqrt((s - mean) ** 2 @ f),
                       **{f"VaR {100 * p:g}%": s[np.searchsorted(cdf, p)] for p in LEVELS}})
 
 
-def q2c(freqs, sevs, best):
-    """Panjer pmf of the yearly loss for every frequency/severity pair; the best pair is plotted and returned."""
-    table = {}
-    for f_name, freq in freqs.items():
-        for s_name, sev in sevs.items():
-            s, fx = discretize(sev)
-            fs = panjer(yearly_frequency(freq), fx)
-            mean, std = model_moments(yearly_frequency(freq), sev)
-            var_p = pmf_measures(s, fs).filter(like="VaR")
-            table[(f_name, s_name)] = pd.Series({"Mean": mean, "Std": std, **var_p, "Mass on grid": fs.sum()})
-            if (f_name, s_name) == best:
-                fs_best = fs
-    table = pd.DataFrame(table).T
-    table.to_csv(OUT_DIR / "Q2c_table.csv")
-    print(f"\n2c) yearly loss S (MDKK), Panjer on [0, {S_MAX}] with step {H}, collective model = {best}\n",
-          table.round(1).assign(**{"Mass on grid": table["Mass on grid"].round(4)}).to_string())
+def aggregate_moments(freq, sev, s, fx):
+    """E[S], Var(S) and skew(S) from the moments of N and X (Lecture 21):
+        kappa3(S) = E[N] kappa3(X) + 3 Var(N) E[X] Var(X) + kappa3(N) E[X]^3.
+    Moments of X are exact if finite, otherwise from the discretised X (s, fx)."""
+    EN, VN, gN = (float(v) for v in freq.stats(moments="mvs"))
+    mu, var, gX = (float(v) for v in sev.stats(moments="mvs"))
+    if np.isfinite([mu, var, gX]).all():
+        print("    moments of X: exact, from the fitted distribution")
+        k3 = gX * var ** 1.5
+    else:
+        print("    moments of X: infinite for the fitted distribution, taken from the discretised X on [0, S_MAX]")
+        mu = s @ fx
+        var, k3 = (s - mu) ** 2 @ fx, (s - mu) ** 3 @ fx
+    ES = EN * mu
+    VS = EN * var + VN * mu ** 2
+    k3S = EN * k3 + 3 * VN * mu * var + gN * VN ** 1.5 * mu ** 3
+    return ES, VS, k3S / VS ** 1.5
 
-    row = table.loc[best]
-    upper = s[np.searchsorted(np.cumsum(fs_best), 0.999)]
+
+def q2c(freqs, sevs, best):
+    """Collective model for the best frequency/severity pair: Panjer pmf of the yearly loss S."""
+    freq, sev = yearly_frequency(freqs[best[0]]), sevs[best[1]]
+    s, fx = discretize(sev)
+    fs = panjer(freq, fx)
+    mean, std = model_moments(freq, sev)
+    m = pmf_measures(s, fs)
+    table = pd.Series({"Mean (theory)": mean, "Std (theory)": std,
+                       "Mean (pmf)": m.Mean, "Std (pmf)": m.Std, **m.filter(like="VaR")}, name=" + ".join(best))
+    table.to_frame().T.to_csv(OUT_DIR / "Q2c_table.csv")
+    print(f"\n2c) yearly loss S (MDKK), collective model {best}, Panjer on [0, {S_MAX}] with step {H}")
+    if np.isinf(std):
+        print("    Var(X) is infinite for the fitted Pareto (alpha <= 2), so the theoretical std of S is inf")
+    print(table.to_frame().T.round(1).to_string())
+
+    upper = s[np.searchsorted(np.cumsum(fs), 0.999)]
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(s[s <= upper], fs_best[s <= upper] / H, "k")
+    ax.plot(s[s <= upper], fs[s <= upper] / H, "k")
     for p, ls in zip(LEVELS, ["--", "-.", ":"]):
         key = f"VaR {100 * p:g}%"
-        ax.axvline(row[key], color="r", ls=ls, label=f"{key} = {row[key]:.0f}")
+        ax.axvline(m[key], color="r", ls=ls, label=f"{key} = {m[key]:.0f}")
     ax.set_xlabel("Yearly loss s (MDKK), cut at the 99.9% quantile")
     ax.set_ylabel("Density f_S(s)")
-    ax.set_title(f"Collective model: {best[0]} frequency, {best[1]} severity (mean {row['Mean']:.0f})")
+    ax.set_title(f"Collective model: {best[0]} frequency, {best[1]} severity")
     ax.grid(True, alpha=0.3)
     ax.legend(frameon=False)
     fig.tight_layout()
     fig.savefig(OUT_DIR / "Q2c_collective.png", dpi=150)
     plt.close(fig)
-    return s, fs_best
+    return freq, sev, s, fx, upper
 
 
-def q2d(s, fs):
-    """Normal N(mu, sd^2) and translated gamma x0 + Gamma(a, scale) with a = 4/skew^2,
-    scale = sd skew / 2, x0 = mu - 2 sd / skew, where mu, sd, skew are the moments of the Panjer pmf fs."""
-    print("\n2d) moments of the collective pmf for different cut-offs (true std and skewness are infinite)")
-    for cut in (5_000, 10_000, S_MAX):
-        m = pmf_measures(s[s <= cut], fs[s <= cut])
-        print(f"    S_MAX = {cut:6d}: mean {m.Mean:.1f}, std {m.Std:.1f}, skewness {m.Skew:.2f}")
-    m = pmf_measures(s, fs)
-    mu, sd, skew = m.Mean, m.Std, m.Skew
-    approx = {"Normal": stats.norm(mu, sd),
-              "Translated gamma": stats.gamma(4 / skew ** 2, loc=mu - 2 * sd / skew, scale=sd * skew / 2)}
+def q2d(freq, sev, s, fx, upper):
+    """Normal N(E[S], Var(S)) and translated gamma k + Gamma(alpha, rate beta) with alpha = 4 / skew^2,
+    beta = 2 / (skew Std(S)), k = E[S] - 2 Std(S) / skew, where the moments of S come from N and X.
+    Plotted as densities on the same range as the Panjer pmf in c) (up to its 99.9% quantile `upper`)."""
+    print("\n2d) moments of S from the moments of N and X")
+    ES, VS, skew = aggregate_moments(freq, sev, s, fx)
+    sd = np.sqrt(VS)
+    print(f"    E[S] {ES:.1f}, Std(S) {sd:.1f}, skew(S) {skew:.2f}")
+    alpha, beta, k = 4 / skew ** 2, 2 / (skew * sd), ES - 2 * sd / skew
+    approx = {"Normal": stats.norm(ES, sd),
+              "Translated gamma": stats.gamma(a=alpha, loc=k, scale=1 / beta)}
 
-    table = {"Collective (Panjer)": m.drop("Skew")}
+    table = {}
     for name, dist in approx.items():
         table[name] = pd.Series({"Mean": dist.mean(), "Std": dist.std(),
                                  **{f"VaR {100 * p:g}%": dist.ppf(p) for p in LEVELS}})
@@ -258,22 +272,18 @@ def q2d(s, fs):
     table.to_csv(OUT_DIR / "Q2d_table.csv")
     print(table.round(1).to_string())
 
-    grid = np.linspace(0, 1.2 * table[f"VaR {100 * LEVELS[-1]:g}%"].max(), 1000)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+    grid = s[s <= upper]
+    fig, ax = plt.subplots(figsize=(9, 5))
     for (name, dist), color in zip(approx.items(), ["C0", "C1"]):
-        ax1.plot(grid, dist.pdf(grid), color=color, label=name)
-        ax2.plot(grid, dist.cdf(grid), color=color, label=name)
-        ax2.plot(table.loc[name, [f"VaR {100 * p:g}%" for p in LEVELS]], LEVELS, "o", color=color)
-    for p in LEVELS:
-        ax2.axhline(p, color="gray", ls=":", lw=0.8)
-    ax1.set_ylabel("Density")
-    ax1.set_title("Approximations of the yearly loss")
-    ax2.set_ylabel("F(s)")
-    ax2.set_title("cdf, dots = VaR 95%, 99%, 99.5%")
-    for ax in (ax1, ax2):
-        ax.set_xlabel("Yearly loss s (MDKK)")
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=False)
+        ax.plot(grid, dist.pdf(grid), color=color, label=name)
+        for p, ls in zip(LEVELS, ["--", "-.", ":"]):
+            key = f"VaR {100 * p:g}%"
+            ax.axvline(table.loc[name, key], color=color, ls=ls, label=f"  {key} = {table.loc[name, key]:.0f}")
+    ax.set_xlabel("Yearly loss s (MDKK), same range as in 2c")
+    ax.set_ylabel("Density f_S(s)")
+    ax.set_title("Normal and translated gamma approximations")
+    ax.grid(True, alpha=0.3)
+    ax.legend(frameon=False)
     fig.tight_layout()
     fig.savefig(OUT_DIR / "Q2d_approximations.png", dpi=150)
     plt.close(fig)
@@ -283,5 +293,4 @@ if __name__ == "__main__":
     fire = load_fire()
     freqs, best_freq = q2a(monthly(fire))
     sevs, best_sev = q2b(fire)
-    s, fs = q2c(freqs, sevs, (best_freq, best_sev))
-    q2d(s, fs)
+    q2d(*q2c(freqs, sevs, (best_freq, best_sev)))
